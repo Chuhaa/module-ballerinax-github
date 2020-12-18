@@ -119,7 +119,7 @@ function getValidatedRestResponse(http:Response|http:PayloadType|error response)
 # + stringQuery - GraphQL API query to get the project board columns
 # + githubClient - GitHub client object
 # + return - Column list object or Connector error
-function getProjectColumns(string ownerType, string stringQuery, http:Client githubClient, string accessToken) returns
+function getProjectColumns(string ownerType, string stringQuery, http:Client githubClient) returns
 @tainted ColumnList | error {
 
     http:Client gitHubEndpoint = githubClient;
@@ -130,7 +130,6 @@ function getProjectColumns(string ownerType, string stringQuery, http:Client git
     }
 
     http:Request request = new;
-    setHeader(request, accessToken);
     json jsonQuery = check stringToJson(stringQuery);
     //Set headers and payload to the request
     constructRequest(request, <@untainted>jsonQuery);
@@ -146,10 +145,6 @@ function getProjectColumns(string ownerType, string stringQuery, http:Client git
     map<json> gitPoject = <map<json>> mapJsonownerType[GIT_PROJECT];
     json projectColumnsJson = <map<json>> gitPoject[GIT_COLUMNS];
     return jsonToColumnList(projectColumnsJson, ownerType, stringQuery);
-}
-
-function setHeader(http:Request request, string accessToken){
-    request.setHeader("Authorization", "token " + accessToken);
 }
 
 # Convert string representation of JSON object to JSON object.

@@ -16,6 +16,7 @@
 
 import ballerina/http;
 import ballerina/io;
+import ballerina/oauth2;
 
 # GitHub Client object.
 # + accessToken - The access token of the github account
@@ -23,14 +24,25 @@ import ballerina/io;
 # + githubGraphQlClient - HTTP client endpoint
 public client class Client {
 
-    string accessToken;
     http:Client githubRestClient;
     http:Client githubGraphQlClient;
 
     public function init(GitHubConfiguration gitHubConfig) {
-        self.accessToken = gitHubConfig.accessToken;
-        self.githubRestClient = new(GIT_REST_API_URL, gitHubConfig.clientConfig);
-        self.githubGraphQlClient = new(GIT_GRAPHQL_API_URL, gitHubConfig.clientConfig);
+        oauth2:OutboundOAuth2Provider oauth2Provider = new (gitHubConfig.oauth2Config);
+        http:BearerAuthHandler bearerHandler = new (oauth2Provider);
+        http:ClientSecureSocket? socketConfig = gitHubConfig?.secureSocketConfig;
+        self.githubRestClient = new (GIT_REST_API_URL, {
+            auth: {
+                authHandler: bearerHandler
+            },
+            secureSocket: socketConfig
+        });
+        self.githubGraphQlClient = new (GIT_GRAPHQL_API_URL, {
+            auth: {
+                authHandler: bearerHandler
+            },
+            secureSocket: socketConfig
+        });
     }
 
     # Creates a new issue in a repository.
@@ -69,7 +81,6 @@ public client class Client {
             "assignees": jsonAssigneeList };
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> issueJsonPayload);
 
@@ -101,7 +112,7 @@ public client class Client {
                 if (cardList.listOwner == (GIT_ORGANIZATION)) {
                     convertedQuery[GIT_QUERY] = GET_ORGANIZATION_PROJECT_CARDS_NEXT_PAGE;
                     ColumnList columnList = check getProjectColumns(GIT_ORGANIZATION,
-                        convertedQuery.toJsonString(), self.githubGraphQlClient, self.accessToken);
+                        convertedQuery.toJsonString(), self.githubGraphQlClient);
                     foreach var column in columnList.getAllColumns() {
                         if (column.id == cardListColumnId) {
                             return column.cards;
@@ -110,7 +121,7 @@ public client class Client {
                 } else if (cardList.listOwner == (GIT_REPOSITORY)) {
                     convertedQuery[GIT_QUERY] = GET_REPOSITORY_PROJECT_CARDS_NEXT_PAGE;
                     ColumnList columnList = check getProjectColumns(GIT_REPOSITORY, convertedQuery.toJsonString(),
-                        self.githubGraphQlClient, self.accessToken);
+                        self.githubGraphQlClient);
                     foreach var column in columnList.getAllColumns() {
                         if (column.id == cardListColumnId) {
                             return column.cards;
@@ -144,12 +155,10 @@ public client class Client {
 
                 if (columnList.listOwner == GIT_ORGANIZATION) {
                     jsonQuery[GIT_QUERY] = GET_ORGANIZATION_PROJECT_COLUMNS_NEXT_PAGE;
-                    return getProjectColumns(GIT_ORGANIZATION, jsonQuery.toString(), self.githubGraphQlClient,
-                    self.accessToken);
+                    return getProjectColumns(GIT_ORGANIZATION, jsonQuery.toString(), self.githubGraphQlClient);
                 } else if (columnList.listOwner == GIT_REPOSITORY) {
                     jsonQuery[GIT_QUERY] = GET_REPOSITORY_PROJECT_COLUMNS_NEXT_PAGE;
-                    return getProjectColumns(GIT_REPOSITORY, jsonQuery.toString(), self.githubGraphQlClient,
-                    self.accessToken);
+                    return getProjectColumns(GIT_REPOSITORY, jsonQuery.toString(), self.githubGraphQlClient);
                 }
             } else {
                 error err = error(GITHUB_ERROR_CODE, message = "Cannot parse columnListQuery.");
@@ -190,7 +199,6 @@ public client class Client {
             repositoryOwner, repositoryName, recordCount);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json convertedQuery = check stringToJson(stringQuery);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> convertedQuery);
@@ -247,7 +255,6 @@ public client class Client {
             repositoryOwner, repositoryName, state, recordCount);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json convertedQuery = check stringToJson(stringQuery);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> convertedQuery);
@@ -280,7 +287,6 @@ public client class Client {
 
         if (issueList.hasNextPage()) {
             http:Request request = new;
-            setHeader(request, self.accessToken);
             json jsonQuery = check stringToJson(issueList.issueListQuery);
             if (jsonQuery is map<json>) {
                 json variables = jsonQuery["variables"];
@@ -337,7 +343,6 @@ public client class Client {
         string stringQuery = io:sprintf(TEMPLATE_GET_ORGANIZATION, name);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json jsonQuery = check stringToJson(stringQuery);
         // Set headers and payload to the request
         // Set headers and payload to the request
@@ -377,7 +382,6 @@ public client class Client {
         string stringQuery = io:sprintf(TEMPLATE_GET_ORGANIZATION_PROJECT, organizationName, projectNumber);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json jsonQuery = check stringToJson(stringQuery);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> jsonQuery);
@@ -435,7 +439,6 @@ public client class Client {
         string stringQuery = io:sprintf(TEMPLATE_GET_ORGANIZATION_PROJECTS, organizationName, state, recordCount);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json jsonQuery = check stringToJson(stringQuery);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> jsonQuery);
@@ -487,7 +490,6 @@ public client class Client {
         string stringQuery = io:sprintf(TEMPLATE_GET_USER_REPOSITORIES, userName, recordCount);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json jsonQuery = check stringToJson(stringQuery);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> jsonQuery);
@@ -540,7 +542,6 @@ public client class Client {
         string stringQuery = io:sprintf(TEMPLATE_GET_ORGANIZATION_REPOSITORIES, organizationName, recordCount);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json jsonQuery = check stringToJson(stringQuery);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> jsonQuery);
@@ -584,14 +585,14 @@ public client class Client {
             string organization = split(resourcePath, PATH_SEPARATOR, INDEX_TWO);
             string stringQuery = io:sprintf(TEMPLATE_GET_ORGANIZATION_PROJECT_COLUMNS,
                 organization, project.number, recordCount);
-            return getProjectColumns(GIT_ORGANIZATION, stringQuery, self.githubGraphQlClient, self.accessToken);
+            return getProjectColumns(GIT_ORGANIZATION, stringQuery, self.githubGraphQlClient);
         } else if (projectOwnerType == GIT_REPOSITORY) {
 
             string ownerName = split(resourcePath, PATH_SEPARATOR, INDEX_ONE);
             string repositoryName = split(resourcePath, PATH_SEPARATOR, INDEX_TWO);
             string stringQuery = io:sprintf(TEMPLATE_GET_REPOSITORY_PROJECT_COLUMNS,
                 ownerName, repositoryName, project.number, recordCount);
-            return getProjectColumns(GIT_REPOSITORY, stringQuery, self.githubGraphQlClient, self.accessToken);
+            return getProjectColumns(GIT_REPOSITORY, stringQuery, self.githubGraphQlClient);
         } else {
             error err = error(GITHUB_ERROR_CODE, message = "No records found.");
             return err;
@@ -605,7 +606,6 @@ public client class Client {
         if (projectList.hasNextPage()) {
 
             http:Request request = new;
-            setHeader(request, self.accessToken);
             json dataQuery;
             json jsonQuery = check stringToJson(projectList.projectListQuery);
             if (jsonQuery is map<json>) {
@@ -683,7 +683,6 @@ public client class Client {
         string stringQuery = io:sprintf(TEMPLATE_GET_PULL_REQUESTS, repositoryOwner, repositoryName, state, recordCount);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json jsonQuery = check stringToJson(stringQuery);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> jsonQuery);
@@ -716,7 +715,6 @@ public client class Client {
         if (pullRequestList.hasNextPage()) {
 
             http:Request request = new;
-            setHeader(request, self.accessToken);
             json jsonQuery = check stringToJson(pullRequestList.pullRequestListQuery);
             if (jsonQuery is map<json>) {
                 json variables = jsonQuery["variables"];
@@ -784,7 +782,6 @@ public client class Client {
         string stringQuery = io:sprintf(TEMPLATE_GET_REPOSITORY, repoOwner, repoName);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json jsonQuery = check stringToJson(stringQuery);
         // Set headers and payload to the request
         constructRequest(request, <@untainted> jsonQuery);
@@ -808,7 +805,6 @@ public client class Client {
         if (repositoryList.hasNextPage()) {
 
             http:Request request = new;
-            setHeader(request, self.accessToken);
             json jsonQuery = check stringToJson(repositoryList.repositoryListQuery);
             if (jsonQuery is map<json>) {
                 json variables = jsonQuery["variables"];
@@ -875,7 +871,6 @@ public client class Client {
         string stringQuery = io:sprintf(TEMPLATE_GET_REPOSITORY_PROJECT, repositoryOwner, repositoryName, projectNumber);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json jsonQuery = check stringToJson(stringQuery);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> jsonQuery);
@@ -930,7 +925,6 @@ public client class Client {
             repositoryOwner, repositoryName, state, recordCount);
 
         http:Request request = new;
-        setHeader(request, self.accessToken);
         json jsonQuery = check stringToJson(stringQuery);
         //Set headers and payload to the request
         constructRequest(request, <@untainted> jsonQuery);
@@ -960,6 +954,6 @@ public client class Client {
 # + clientConfig - HTTP client endpoint configuration
 # + accessToken - The access token of the Github account
 public type GitHubConfiguration record {
-    http:ClientConfiguration clientConfig = {};
-    string accessToken;
+    oauth2:DirectTokenConfig oauth2Config;
+    http:ClientSecureSocket secureSocketConfig?;
 };

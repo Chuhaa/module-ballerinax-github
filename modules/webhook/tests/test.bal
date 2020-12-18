@@ -47,7 +47,7 @@ http:BearerAuthHandler bearerHandler = new(oauth2Provider);
 
 @websub:SubscriberServiceConfig {
     subscribeOnStartUp: true,
-    target: [HUB, config:getAsString("TOPIC_GITHUB")],
+    target: [HUB, "https://github.com/" + config:getAsString("GH_USERNAME") + "/" + config:getAsString("GH_REPO_NAME") + "/events/*.json"],
     secret: config:getAsString("SECRET_GITHUB"),
     callback: config:getAsString("CALLBACK_GITHUB"),
     hubClientConfig: {
@@ -115,12 +115,20 @@ string createdIssueAssignee = createdIssueUsername;
 }
 function testWebhookNotificationOnIssueCreation() {
     github:GitHubConfiguration gitHubConfig = {
-        accessToken: config:getAsString("ACCESS_TOKEN")
+        oauth2Config: {
+            accessToken: config:getAsString("ACCESS_TOKEN"),
+            refreshConfig: {
+                clientId: config:getAsString("CLIENT_ID"),
+                clientSecret: config:getAsString("CLIENT_SECRET"),
+                refreshUrl: config:getAsString("REFRESH_URL"),
+                refreshToken: config:getAsString("REFRESH_TOKEN")
+            }
+        }
     };
 
     github:Client githubClient = new (gitHubConfig);
 
-    var issueCreationStatus = githubClient->createIssue(createdIssueUsername, "github-connector", createdIssueTitle,
+    var issueCreationStatus = githubClient->createIssue("shanan", "github-connector", createdIssueTitle,
                                          "This is the body of the test issue: webhook", createdIssueLabelArray,
                                          [createdIssueAssignee]);
     if (issueCreationStatus is error) {
